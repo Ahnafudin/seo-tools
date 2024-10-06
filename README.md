@@ -1,1 +1,1 @@
-check wayback archive domain
+kumpulan scripts seo tools
