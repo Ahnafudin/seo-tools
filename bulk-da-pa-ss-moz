@@ -1,0 +1,88 @@
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.tablesorter/2.31.3/js/jquery.tablesorter.min.js"></script>
+<?php
+$error_message = "";
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $access_id = $_POST['access_id'];
+    $secret_key = $_POST['secret_key'];
+    $domains = array_filter(explode("\n", $_POST['domains']));  // Split by lines and filter out empty ones
+
+    $encoded_auth_token = base64_encode("{$access_id}:{$secret_key}");
+    $url = "https://lsapi.seomoz.com/v2/url_metrics";
+    $headers = [
+        "Authorization: Basic {$encoded_auth_token}"
+    ];
+
+    // Split domains into chunks of 50
+    $chunked_domains = array_chunk($domains, 50);
+
+    $all_results = [];
+    foreach ($chunked_domains as $chunk) {
+        $data = ["targets" => $chunk];
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        $response = curl_exec($ch);
+        $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($statusCode != 200) {
+						$decodedResponse = json_decode($response, true);
+						$specificErrorMessage = isset($decodedResponse['message']) ? $decodedResponse['message'] : 'Unknown error';
+						$error_message = "Error with Moz API for chunk: " . implode(", ", $chunk) . ". Message: " . $specificErrorMessage;
+						break;
+				}
+				else {
+            $result = json_decode($response, true);
+            $all_results = array_merge($all_results, $result['results']);
+        }
+			if (next($chunked_domains) !== false) {
+            sleep(10);
+        }
+    }
+}
+?>
+
+<form method="post">
+    Access ID <input type="text" name="access_id" placeholder="Will not save Access ID data" required><br>
+    Secret Key <input type="text" name="secret_key" placeholder="Will not save Secret Key data" required><br>
+    Domains (no limits) <textarea name="domains" placeholder="Enter domains one per line (up to 50 at a time, one request every ten seconds)" required></textarea>
+    <input type="submit" value="Cek">
+</form>
+
+<?php
+    if (!empty($error_message)) {
+        echo "<p style='color: red;'>" . htmlspecialchars($error_message) . "</p>";
+    } elseif (isset($all_results) && count($all_results) > 0) {
+        echo "<table border='1'>
+            <thead>
+                <tr>
+                    <th>Domain</th>
+                    <th>DA</th>
+                    <th>PA</th>
+                    <th>SS</th>
+                </tr>
+            </thead>
+            <tbody>
+						</tbody>";
+        foreach ($all_results as $index => $result) {
+            $spam_score = $result['spam_score'] == -1 ? 0 : $result['spam_score'];
+            echo "<tr>
+                <td>{$domains[$index]}</td>
+                <td>{$result['domain_authority']}</td>
+                <td>{$result['page_authority']}</td>
+                <td>{$spam_score}</td>
+            </tr>";
+        }
+        echo "</tbody></table>";
+    }
+    ?>
+
+<script>
+$(document).ready(function() {
+    $("table").tablesorter();
+});
+</script>
