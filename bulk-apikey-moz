@@ -1,0 +1,84 @@
+<?php
+$error_message = "";
+$api_keys = explode("\n", $_POST['api_keys']);
+$api_keys = array_map('trim', $api_keys); // Remove leading/trailing white spaces
+$api_keys = array_unique($api_keys); // Remove duplicate keys
+$results = [];
+
+foreach ($api_keys as $api_key) {
+    $parts = explode(":", $api_key);
+    if (count($parts) === 2) {
+        $access_id = trim($parts[0]);
+        $secret_key = trim($parts[1]);
+
+        $encoded_auth_token = base64_encode("{$access_id}:{$secret_key}");
+        $url = "https://lsapi.seomoz.com/v2/url_metrics";
+        $headers = [
+            "Authorization: Basic {$encoded_auth_token}"
+        ];
+
+        $data = ["targets" => ["google.com"]]; // You can change the target domain here
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        $response = curl_exec($ch);
+        $statusCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($statusCode === 200) {
+            $result = json_decode($response, true);
+            $results[] = [
+                "access_id" => $access_id,
+                "secret_key" => $secret_key,
+                "status" => "OK"
+            ];
+        } else {
+            $decodedResponse = json_decode($response, true);
+            $specificErrorMessage = isset($decodedResponse['message']) ? $decodedResponse['message'] : 'Unknown error';
+            $results[] = [
+                "access_id" => $access_id,
+                "secret_key" => $secret_key,
+                "status" => $specificErrorMessage
+            ];
+        }
+    }
+}
+
+?>
+
+<form method="post">
+    <textarea name="api_keys" placeholder="Enter apikeys one per line (Access ID:Secret Key)" required></textarea>
+    <input type="submit" value="Cek">
+</form>
+
+<?php
+if (!empty($results)) {
+    echo "<table border='1'>
+        <thead>
+            <tr>
+                <th>Access ID</th>
+                <th>Secret Key</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>";
+
+    foreach ($results as $result) {
+        echo "<tr>
+            <td>{$result['access_id']}</td>
+            <td>{$result['secret_key']}</td>
+            <td>{$result['status']}</td>
+        </tr>";
+    }
+    echo "</tbody></table>";
+}
+?>
+
+<script>
+$(document).ready(function() {
+    $("table").tablesorter();
+});
+</script>
